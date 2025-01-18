@@ -39,7 +39,7 @@ async function downloadProtectedPDF(url: string): Promise<Buffer> {
 
     // Wait for jsPDF to load
     await page.waitForFunction(() => {
-      // @ts-ignore
+      // @ts-expect-error - jsPDF is loaded dynamically
       return typeof window.jsPDF !== 'undefined';
     });
 
@@ -70,22 +70,22 @@ async function downloadProtectedPDF(url: string): Promise<Buffer> {
       }
 
       // Create PDF
-      // @ts-ignore
+      // @ts-expect-error - jsPDF is loaded dynamically
       const pdf = new window.jsPDF();
       
       for (let i = 0; i < images.length; i++) {
         const imgData = images[i];
         
         if (i > 0) {
-          // @ts-ignore
+          // @ts-expect-error - jsPDF is loaded dynamically
           pdf.addPage();
         }
 
-        // @ts-ignore
+        // @ts-expect-error - jsPDF is loaded dynamically
         pdf.addImage(imgData, 'JPEG', 0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight(), '', 'FAST');
       }
 
-      // @ts-ignore
+      // @ts-expect-error - jsPDF is loaded dynamically
       return pdf.output('arraybuffer');
     });
 
