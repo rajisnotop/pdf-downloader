@@ -11,24 +11,19 @@ export const config = {
   },
 };
 
-async function downloadProtectedPDF(url: string) {
-  let browser = null;
+async function downloadProtectedPDF(url: string): Promise<Buffer> {
+  let browser: puppeteer.Browser | null = null;
   try {
     browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox', 
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins',
-        '--disable-site-isolation-trials'
-      ]
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 1920, height: 1080 });
+    await page.setViewport({ width: 1200, height: 800 });
     
     // Navigate and wait for viewer
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle0' });
     await page.waitForSelector('.ndfHFb-c4YZDc-Wrql6b', { timeout: 10000 });
 
     // Inject jsPDF
@@ -40,51 +35,37 @@ async function downloadProtectedPDF(url: string) {
           createScriptURL: (input: string) => input
         });
         const script = document.createElement('script');
-        script.src = policy.createScriptURL('https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.3.2/jspdf.min.js');
-        document.body.appendChild(script);
+        script.src = policy.createScriptURL('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+        document.head.appendChild(script);
       } else {
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.3.2/jspdf.min.js';
-        document.body.appendChild(script);
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        document.head.appendChild(script);
       }
     });
 
-    await page.waitForFunction(() => typeof window.jsPDF !== 'undefined');
+    await page.waitForFunction(() => {
+      // @ts-ignore
+      return typeof window.jsPDF !== 'undefined';
+    });
 
     // Scroll through document to load all pages
     await page.evaluate(async () => {
-      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-      const container = document.querySelector('.ndfHFb-c4YZDc-Wrql6b');
-      if (!container) return;
+      await new Promise<void>((resolve) => {
+        let totalHeight = 0;
+        const distance = 100;
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          window.scrollBy(0, distance);
+          totalHeight += distance;
 
-      // First scroll to bottom
-      container.scrollTop = container.scrollHeight;
-      await sleep(2000);
-
-      // Then scroll back up
-      container.scrollTop = 0;
-      await sleep(1000);
-
-      // Click next button multiple times to ensure all pages are loaded
-      for (let i = 0; i < 30; i++) {
-        const nextButton = document.querySelector('.ndfHFb-c4YZDc-MZArnb-BIzmGd-fmcmS-DARUcf') as HTMLElement;
-        if (!nextButton) break;
-        nextButton.click();
-        await sleep(500);
-      }
-
-      // Scroll back to start
-      await sleep(1000);
-      while (true) {
-        const prevButton = document.querySelector('.ndfHFb-c4YZDc-MZArnb-BIzmGd-fmcmS-DARUcf-LgbsSe-hvhgNd') as HTMLElement;
-        if (!prevButton) break;
-        prevButton.click();
-        await sleep(300);
-      }
+          if (totalHeight >= scrollHeight) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 100);
+      });
     });
-
-    // Wait for images to settle
-    await page.waitForTimeout(2000);
 
     // Create PDF
     const pdfBase64 = await page.evaluate(async () => {
@@ -117,8 +98,10 @@ async function downloadProtectedPDF(url: string) {
           const orientation = (img.width > img.height) ? 'landscape' : 'portrait';
 
           if (processedImages === 0) {
-            pdf = new jsPDF(orientation);
+            // @ts-ignore
+            pdf = new window.jsPDF(orientation);
           } else {
+            // @ts-ignore
             pdf.addPage(orientation);
           }
 
@@ -139,6 +122,7 @@ async function downloadProtectedPDF(url: string) {
           const x = (pageWidth - imgWidth) / 2;
           const y = (pageHeight - imgHeight) / 2;
 
+          // @ts-ignore
           pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
           processedImages++;
         }
@@ -160,7 +144,10 @@ async function downloadProtectedPDF(url: string) {
   }
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

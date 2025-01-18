@@ -122,11 +122,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Chakra UI for the component library
 - All contributors who have helped this project grow
 
-## 📧 Contact
-
-Your Name - [@your_twitter](https://twitter.com/your_twitter)
-
-Project Link: [https://github.com/rajisnotop/pdf-downloader](https://github.com/rajisnotop/pdf-downloader)
 
 ## ⚠️ Disclaimer
 
