@@ -37,14 +37,24 @@ async function downloadProtectedPDF(url: string): Promise<Buffer> {
       type: 'text/javascript'
     });
 
-    // Wait for jsPDF to load
-    await page.waitForFunction(() => {
-      // @ts-expect-error - jsPDF is loaded dynamically
-      return typeof window.jsPDF !== 'undefined';
-    });
-
-    // Generate PDF from page content
+    // Wait for jsPDF to load and convert PDF
     const pdfBuffer = await page.evaluate(async () => {
+      function waitForJsPDF(): Promise<void> {
+        return new Promise((resolve) => {
+          const check = () => {
+            // @ts-expect-error - jsPDF is loaded dynamically
+            if (typeof window.jsPDF !== 'undefined') {
+              resolve();
+            } else {
+              setTimeout(check, 100);
+            }
+          };
+          check();
+        });
+      }
+
+      await waitForJsPDF();
+
       const container = document.querySelector('.ndfHFb-c4YZDc-Wrql6b');
       if (!container) throw new Error('PDF container not found');
 
@@ -70,23 +80,23 @@ async function downloadProtectedPDF(url: string): Promise<Buffer> {
       }
 
       // Create PDF
-      // @ts-expect-error - jsPDF is loaded dynamically
       const pdf = new window.jsPDF();
       
       for (let i = 0; i < images.length; i++) {
         const imgData = images[i];
         
         if (i > 0) {
-          // @ts-expect-error - jsPDF is loaded dynamically
           pdf.addPage();
         }
 
-        // @ts-expect-error - jsPDF is loaded dynamically
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight(), '', 'FAST');
+        const width = pdf.internal.pageSize.getWidth();
+        const height = pdf.internal.pageSize.getHeight();
+
+        pdf.addImage(imgData, 'JPEG', 0, 0, width, height, undefined, 'FAST');
       }
 
-      // @ts-expect-error - jsPDF is loaded dynamically
-      return pdf.output('arraybuffer');
+      const result = pdf.output('arraybuffer');
+      return result instanceof ArrayBuffer ? result : new ArrayBuffer(0);
     });
 
     return Buffer.from(pdfBuffer);
