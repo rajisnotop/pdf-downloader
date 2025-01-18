@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { Browser, Page } from 'puppeteer';
 import puppeteer from 'puppeteer';
 import axios from 'axios';
 
@@ -12,14 +13,16 @@ export const config = {
 };
 
 async function downloadProtectedPDF(url: string): Promise<Buffer> {
-  let browser: puppeteer.Browser | null = null;
+  let browser: Browser | null = null;
+  let page: Page | null = null;
+
   try {
     browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 800 });
     
     // Navigate and wait for viewer
@@ -44,6 +47,7 @@ async function downloadProtectedPDF(url: string): Promise<Buffer> {
       }
     });
 
+    // Wait for jsPDF to load
     await page.waitForFunction(() => {
       // @ts-ignore
       return typeof window.jsPDF !== 'undefined';
@@ -69,78 +73,82 @@ async function downloadProtectedPDF(url: string): Promise<Buffer> {
 
     // Create PDF
     const pdfBase64 = await page.evaluate(async () => {
-      return new Promise((resolve) => {
-        const elements = document.getElementsByTagName("img");
-        const blobImages = Array.from(elements)
-          .filter(img => /^blob:/.test(img.src))
-          // Sort images by their position in the document
-          .sort((a, b) => {
-            const rectA = a.getBoundingClientRect();
-            const rectB = b.getBoundingClientRect();
-            return rectA.top - rectB.top;
-          });
-        
-        if (blobImages.length === 0) {
-          throw new Error('No PDF pages found');
-        }
+      const container = document.querySelector('.ndfHFb-c4YZDc-Wrql6b');
+      if (!container) throw new Error('PDF container not found');
 
-        let pdf;
-        let processedImages = 0;
+      // Get all pages
+      const pages = container.querySelectorAll('.ndfHFb-c4YZDc-cYSp0e-DARUcf');
+      if (!pages.length) throw new Error('No pages found');
 
-        for (const img of blobImages) {
-          const canvasElement = document.createElement('canvas');
-          const con = canvasElement.getContext("2d");
-          canvasElement.width = img.width;
-          canvasElement.height = img.height;
-          con.drawImage(img, 0, 0, img.width, img.height);
-          const imgData = canvasElement.toDataURL("image/jpeg", 1.0);
+      // Convert pages to images
+      const images: string[] = [];
+      for (const page of pages) {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) continue;
 
-          const orientation = (img.width > img.height) ? 'landscape' : 'portrait';
+        const img = page.querySelector('img');
+        if (!img) continue;
 
-          if (processedImages === 0) {
-            // @ts-ignore
-            pdf = new window.jsPDF(orientation);
-          } else {
-            // @ts-ignore
-            pdf.addPage(orientation);
-          }
+        canvas.width = img.width;
+        canvas.height = img.height;
+        context.drawImage(img, 0, 0);
+        images.push(canvas.toDataURL('image/jpeg', 0.95));
+      }
 
-          const pageWidth = pdf.internal.pageSize.width;
-          const pageHeight = pdf.internal.pageSize.height;
-          const imgAspect = img.width / img.height;
-          const pageAspect = pageWidth / pageHeight;
+      // Create PDF
+      let pdf: any;
+      let processedImages = 0;
 
-          let imgWidth, imgHeight;
-          if (imgAspect > pageAspect) {
-            imgWidth = pageWidth;
-            imgHeight = pageWidth / imgAspect;
-          } else {
-            imgHeight = pageHeight;
-            imgWidth = pageHeight * imgAspect;
-          }
+      for (const imgData of images) {
+        const img = new Image();
+        img.src = imgData;
+        await new Promise((resolve) => img.onload = resolve);
 
-          const x = (pageWidth - imgWidth) / 2;
-          const y = (pageHeight - imgHeight) / 2;
-
-          // @ts-ignore
-          pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
-          processedImages++;
-        }
+        const orientation = (img.width > img.height) ? 'landscape' : 'portrait';
 
         if (processedImages === 0) {
-          throw new Error('No pages were processed');
+          // @ts-ignore
+          pdf = new window.jsPDF(orientation);
+        } else {
+          // @ts-ignore
+          pdf.addPage(orientation);
         }
 
-        const pdfData = pdf.output('datauristring');
-        resolve(pdfData.split(',')[1]);
-      });
+        // Calculate dimensions to fit page
+        const pageWidth = orientation === 'landscape' ? 297 : 210;
+        const pageHeight = orientation === 'landscape' ? 210 : 297;
+
+        const imgRatio = img.width / img.height;
+        const pageRatio = pageWidth / pageHeight;
+
+        let imgWidth = pageWidth - 20;
+        let imgHeight = imgWidth / imgRatio;
+
+        if (imgHeight > pageHeight - 20) {
+          imgHeight = pageHeight - 20;
+          imgWidth = imgHeight * imgRatio;
+        }
+
+        const x = (pageWidth - imgWidth) / 2;
+        const y = (pageHeight - imgHeight) / 2;
+
+        // @ts-ignore
+        pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
+        processedImages++;
+      }
+
+      // @ts-ignore
+      return pdf.output('arraybuffer');
     });
 
-    return Buffer.from(pdfBase64, 'base64');
+    return Buffer.from(pdfBase64);
+  } catch (error) {
+    console.error('Error in downloadProtectedPDF:', error);
+    throw error;
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (page) await page.close();
+    if (browser) await browser.close();
   }
 }
 
@@ -184,18 +192,13 @@ export default async function handler(
 
     // For Google Drive or if direct download failed, use protected PDF method
     console.log('Using protected PDF download method...');
-    const pdfBuffer = await downloadProtectedPDF(url);
-    
+    const pdf = await downloadProtectedPDF(url);
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=download.pdf');
-
-    return res.send(pdfBuffer);
-
+    res.send(pdf);
   } catch (error) {
-    console.error('Download error:', error);
-    return res.status(500).json({ 
-      error: 'Failed to download PDF. ' + (error.message || 'Please make sure the URL is correct and the PDF is accessible.'),
-      details: error.toString()
-    });
+    console.error('Error in API handler:', error);
+    res.status(500).json({ error: 'Failed to generate PDF' });
   }
 }
