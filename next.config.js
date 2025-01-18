@@ -6,7 +6,20 @@ const nextConfig = {
   },
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   assetPrefix: process.env.NEXT_PUBLIC_BASE_PATH || '',
-  trailingSlash: true,
+  reactStrictMode: true,
+  swcMinify: true,
+  experimental: {
+    optimizeCss: true,
+  },
+}
+
+// Handle GitHub Pages deployment
+const isGithubActions = process.env.GITHUB_ACTIONS || false
+
+if (isGithubActions) {
+  const repo = process.env.GITHUB_REPOSITORY.replace(/.*?\//, '')
+  nextConfig.basePath = `/${repo}`
+  nextConfig.assetPrefix = `/${repo}/`
 }
 
 module.exports = nextConfig
