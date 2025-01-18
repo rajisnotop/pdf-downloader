@@ -48,7 +48,7 @@ Before you begin, ensure you have the following installed:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/pdf-downloader.git
+   git clone https://github.com/rajisnotop/pdf-downloader.git
    ```
 
 2. Navigate to the project directory:
@@ -126,7 +126,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Your Name - [@your_twitter](https://twitter.com/your_twitter)
 
-Project Link: [https://github.com/YOUR_USERNAME/pdf-downloader](https://github.com/YOUR_USERNAME/pdf-downloader)
+Project Link: [https://github.com/rajisnotop/pdf-downloader](https://github.com/rajisnotop/pdf-downloader)
 
 ## ⚠️ Disclaimer
 

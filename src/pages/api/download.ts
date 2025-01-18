@@ -33,8 +33,10 @@ async function downloadProtectedPDF(url: string) {
 
     // Inject jsPDF
     await page.evaluate(() => {
-      if (window.trustedTypes && trustedTypes.createPolicy) {
-        const policy = trustedTypes.createPolicy('myPolicy', {
+      // @ts-ignore - trustedTypes is not in all browser types yet
+      if (window.trustedTypes && window.trustedTypes.createPolicy) {
+        // @ts-ignore
+        const policy = window.trustedTypes.createPolicy('myPolicy', {
           createScriptURL: (input: string) => input
         });
         const script = document.createElement('script');
